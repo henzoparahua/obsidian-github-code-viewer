@@ -21,11 +21,10 @@ If you want to display code from **private repositories**, you need to provide a
 
 ### Manual Installation
 
-1. Go to the [Releases](https://github.com/henzoparahua/github-code-viewer/releases) page of this repository.
-2. Download the `main.js`, `manifest.json`, and `styles.css` files from the latest release.
-3. Inside your Obsidian vault, navigate to `.obsidian/plugins/` and create a folder named `github-code-viewer`.
-4. Place the downloaded files inside the newly created folder.
-5. Restart Obsidian, go to Settings > Community Plugins, disable "Safe Mode", and enable **GitHub Code Viewer**.
+1. Go to the [Releases](https://github.com/henzoparahua/obsidian-github-code-viewer/releases) page of this repository.
+2. Download the `obsidian-github-code-viewer.zip` files from the latest release.
+3. Inside your Obsidian vault, navigate to `.obsidian/plugins/` and extract it.
+4. Restart Obsidian, go to Settings > Community Plugins, disable "Safe Mode", and enable **GitHub Code Viewer**.
 
 ## Development
 
