@@ -1,80 +1,234 @@
-import {App, Editor, MarkdownView, Modal, Notice, Plugin} from 'obsidian';
-import {DEFAULT_SETTINGS, MyPluginSettings, SampleSettingTab} from "./settings";
+import { App, Plugin, PluginSettingTab, Setting, requestUrl } from 'obsidian';
+import { codeToHtml } from 'shiki';
 
-// Remember to rename these classes and interfaces!
+const en = {
+	settingsTitle: 'GitHub Code Viewer Settings',
+	tokenName: 'GitHub Personal Access Token (PAT)',
+	tokenDesc: 'Required only if you want to display code from private repositories. The token is securely saved locally on your computer.',
+	tokenPlaceholder: 'ghp_...',
+	invalidUrl: 'Invalid GitHub URL:',
+	loading: 'Loading...',
+	fetchError: 'Failed to fetch the file. If it is a private repository, check your Token in the settings.',
+	error: 'Error:'
+};
 
-export default class MyPlugin extends Plugin {
-	settings: MyPluginSettings;
+const pt = {
+	settingsTitle: 'Configurações do GitHub Code Viewer',
+	tokenName: 'GitHub Personal Access Token (PAT)',
+	tokenDesc: 'Necessário apenas se você quiser exibir códigos de repositórios privados. O token fica salvo localmente de forma segura no seu computador.',
+	tokenPlaceholder: 'ghp_...',
+	invalidUrl: 'URL do GitHub inválida:',
+	loading: 'Carregando...',
+	fetchError: 'Falha ao buscar o arquivo. Se for um repositório privado, verifique seu Token nas configurações.',
+	error: 'Erro:'
+};
+
+const es = {
+	settingsTitle: 'Configuración de GitHub Code Viewer',
+	tokenName: 'Token de acceso personal de GitHub (PAT)',
+	tokenDesc: 'Necesario solo si desea mostrar código de repositorios privados. El token se guarda localmente de forma segura en su computadora.',
+	tokenPlaceholder: 'ghp_...',
+	invalidUrl: 'URL de GitHub no válida:',
+	loading: 'Cargando...',
+	fetchError: 'Error al obtener el archivo. Si es un repositorio privado, verifique su Token en la configuración.',
+	error: 'Error:'
+};
+
+// Mapeamento dos idiomas
+const locales: Record<string, typeof en> = {
+	'en': en,
+	'pt': pt,
+	'pt-BR': pt,
+	'pt-PT': pt,
+	'es': es,
+};
+
+function t(key: keyof typeof en): string {
+	// Pega o idioma atual do Obsidian. Se não achar, usa 'pt-br' como padrão.
+	const lang = window.localStorage.getItem('language') || 'pt-BR';
+	const locale = locales[lang] || pt;
+	return locale[key] || pt[key];
+}
+
+// --- CONFIGURAÇÕES DO PLUGIN ---
+interface GitHubCodeViewerSettings {
+	githubToken: string;
+}
+
+const DEFAULT_SETTINGS: GitHubCodeViewerSettings = {
+	githubToken: ''
+}
+
+interface ParsedGitHubUrl {
+	owner: string; repo: string; branch: string; path: string; startLine?: number; endLine?: number;
+}
+
+function parseGitHubUrl(rawUrl: string): ParsedGitHubUrl | null {
+	try {
+		let url = rawUrl.trim();
+		if (!url.startsWith("http://") && !url.startsWith("https://")) {
+			url = "https://" + url;
+		}
+
+		const urlObj = new URL(url);
+		if (!urlObj.hostname.includes("github.com")) return null;
+
+		const hash = urlObj.hash;
+		let startLine: number | undefined;
+		let endLine: number | undefined;
+
+		if (hash) {
+			const lineMatch = hash.match(/#L(\d+)(?:-L(\d+))?/);
+			// Corrigido para acessar os índices corretamente
+			if (lineMatch && lineMatch) {
+				startLine = parseInt(lineMatch[1] || "", 10);
+				if (lineMatch) {
+					endLine = parseInt(lineMatch[2] || "", 10);
+				} else {
+					endLine = startLine;
+				}
+			}
+		}
+
+		const pathParts = urlObj.pathname.split("/").filter(Boolean);
+		if (pathParts.length < 5 || pathParts[2] !== "blob") return null;
+
+		const owner = pathParts[0] || "";
+		const repo = pathParts[1] || "";
+		const branch = pathParts[3] || "";
+
+		if (!owner || !repo || !branch) return null;
+
+		return {
+			owner, repo, branch,
+			path: pathParts.slice(4).join("/"),
+			startLine, endLine
+		};
+	} catch (e) { return null; }
+}
+
+function getRawUrl(parsed: ParsedGitHubUrl): string {
+	return `https://raw.githubusercontent.com/${parsed.owner}/${parsed.repo}/${parsed.branch}/${parsed.path}`;
+}
+
+function getLanguageInfo(filename: string): { display: string; ext: string } {
+	const ext = filename.split(".").pop()?.toLowerCase() ?? "text";
+
+	const displayNames: Record<string, string> = {
+		js: "JavaScript", ts: "TypeScript", cpp: "C++", c: "C", cs: "C#",
+		py: "Python", rb: "Ruby", md: "Markdown", html: "HTML", css: "CSS",
+		json: "JSON", yml: "YAML", yaml: "YAML", sh: "Shell", rs: "Rust",
+		go: "Go", java: "Java", php: "PHP", kt: "Kotlin", swift: "Swift"
+	};
+
+	return {
+		display: displayNames[ext] || ext.toUpperCase(),
+		ext: ext
+	};
+}
+
+export default class GitHubCodePlugin extends Plugin {
+	settings: GitHubCodeViewerSettings;
 
 	async onload() {
 		await this.loadSettings();
+		this.addSettingTab(new GitHubCodeViewerSettingTab(this.app, this));
 
-		// This creates an icon in the left ribbon.
-		this.addRibbonIcon('dice', 'Sample', (evt: MouseEvent) => {
-			// Called when the user clicks the icon.
-			new Notice('This is a notice!');
-		});
+		this.registerMarkdownCodeBlockProcessor("github", async (source, el) => {
+			const url = source.trim();
+			const parsed = parseGitHubUrl(url);
 
-		// This adds a status bar item to the bottom of the app. Does not work on mobile apps.
-		const statusBarItemEl = this.addStatusBarItem();
-		statusBarItemEl.setText('Status bar text');
-
-		// This adds a simple command that can be triggered anywhere
-		this.addCommand({
-			id: 'open-modal-simple',
-			name: 'Open modal (simple)',
-			callback: () => {
-				new SampleModal(this.app).open();
+			if (!parsed) {
+				// Usando a tradução
+				el.createEl("div", { text: `${t('invalidUrl')} "${url}"`, cls: "gcv-error" });
+				return;
 			}
-		});
-		// This adds an editor command that can perform some operation on the current editor instance
-		this.addCommand({
-			id: 'replace-selected',
-			name: 'Replace selected content',
-			editorCallback: (editor: Editor, view: MarkdownView) => {
-				editor.replaceSelection('Sample editor command');
-			}
-		});
-		// This adds a complex command that can check whether the current state of the app allows execution of the command
-		this.addCommand({
-			id: 'open-modal-complex',
-			name: 'Open modal (complex)',
-			checkCallback: (checking: boolean) => {
-				// Conditions to check
-				const markdownView = this.app.workspace.getActiveViewOfType(MarkdownView);
-				if (markdownView) {
-					// If checking is true, we're simply "checking" if the command can be run.
-					// If checking is false, then we want to actually perform the operation.
-					if (!checking) {
-						new SampleModal(this.app).open();
-					}
 
-					// This command will only show up in Command Palette when the check function returns true
-					return true;
+			const container = el.createEl("div", { cls: "gcv-container" });
+			container.createEl("div", { text: t('loading'), cls: "gcv-loading" });
+
+			try {
+				const fileName = parsed.path.split("/").pop() ?? "arquivo";
+				const languageInfo = getLanguageInfo(fileName);
+
+				const headers: Record<string, string> = {};
+				if (this.settings.githubToken) {
+					headers["Authorization"] = `Bearer ${this.settings.githubToken}`;
 				}
-				return false;
+
+				const [userResponse, codeResponse] = await Promise.allSettled([
+					requestUrl({ url: `https://api.github.com/users/${parsed.owner}`, headers }),
+					requestUrl({ url: getRawUrl(parsed), headers })
+				]);
+
+				if (codeResponse.status === "rejected") throw new Error(t('fetchError'));
+
+				const text = codeResponse.value.text;
+				let codeContent = text;
+
+				if (parsed.startLine !== undefined) {
+					const lines = text.split("\n");
+					const start = parsed.startLine - 1;
+					const end = parsed.endLine ?? parsed.startLine;
+					codeContent = lines.slice(start, end).join("\n");
+				}
+
+				let highlightedHtml = "";
+				try {
+					highlightedHtml = await codeToHtml(codeContent, {
+						lang: languageInfo.ext,
+						theme: "github-dark",
+					});
+				} catch (e) {
+					highlightedHtml = await codeToHtml(codeContent, {
+						lang: "text",
+						theme: "github-dark",
+					});
+				}
+
+				let avatarUrl = "";
+				let profileUrl = "";
+				if (userResponse.status === "fulfilled" && userResponse.value.json) {
+					avatarUrl = userResponse.value.json.avatar_url;
+					profileUrl = userResponse.value.json.html_url;
+				}
+
+				container.empty();
+
+				container.innerHTML = `
+                    <div class="gcv-inner">
+                        <div class="gcv-header-flex">
+                            ${avatarUrl
+						? `<a href="${profileUrl}" target="_blank" class="gcv-avatar-link"><img src="${avatarUrl}" class="gcv-avatar"/></a>`
+						: `<div class="gcv-avatar-fallback"></div>`}
+                            
+                            <div class="gcv-content">
+                                <a href="${url}" target="_blank" class="gcv-title">
+                                    ${fileName} <span>${parsed.owner}/${parsed.repo}</span>
+                                </a>
+                                
+                                <div class="gcv-code-wrapper">
+                                    <div class="shiki-container">${highlightedHtml}</div>
+                                </div>
+                                
+                                <div class="gcv-footer">
+                                    <span>${parsed.branch}</span>
+                                    <span class="gcv-dot">·</span>
+                                    <span>${languageInfo.display}</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+			} catch (err) {
+				container.empty();
+				container.createEl("div", { text: `${t('error')} ${(err as Error).message}`, cls: "gcv-error" });
 			}
 		});
-
-		// This adds a settings tab so the user can configure various aspects of the plugin
-		this.addSettingTab(new SampleSettingTab(this.app, this));
-
-		// If the plugin hooks up any global DOM events (on parts of the app that doesn't belong to this plugin)
-		// Using this function will automatically remove the event listener when this plugin is disabled.
-		this.registerDomEvent(document, 'click', (evt: MouseEvent) => {
-			new Notice("Click");
-		});
-
-		// When registering intervals, this function will automatically clear the interval when the plugin is disabled.
-		this.registerInterval(window.setInterval(() => console.log('setInterval'), 5 * 60 * 1000));
-
-	}
-
-	onunload() {
 	}
 
 	async loadSettings() {
-		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData() as Partial<MyPluginSettings>);
+		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
 	}
 
 	async saveSettings() {
@@ -82,18 +236,37 @@ export default class MyPlugin extends Plugin {
 	}
 }
 
-class SampleModal extends Modal {
-	constructor(app: App) {
-		super(app);
+// --- TELA DE CONFIGURAÇÕES (UI) ---
+class GitHubCodeViewerSettingTab extends PluginSettingTab {
+	plugin: GitHubCodePlugin;
+
+	constructor(app: App, plugin: GitHubCodePlugin) {
+		super(app, plugin);
+		this.plugin = plugin;
 	}
 
-	onOpen() {
-		let {contentEl} = this;
-		contentEl.setText('Woah!');
-	}
+	display(): void {
+		const { containerEl } = this;
 
-	onClose() {
-		const {contentEl} = this;
-		contentEl.empty();
+		containerEl.empty();
+		// Título usando a tradução
+		containerEl.createEl('h2', { text: t('settingsTitle') });
+
+		new Setting(containerEl)
+			// Nome e descrição usando a tradução
+			.setName(t('tokenName'))
+			.setDesc(t('tokenDesc'))
+			.addText(text => {
+				text
+					.setPlaceholder(t('tokenPlaceholder'))
+					.setValue(this.plugin.settings.githubToken)
+					.onChange(async (value) => {
+						this.plugin.settings.githubToken = value.trim();
+						await this.plugin.saveSettings();
+					});
+
+				text.inputEl.type = "password";
+				return text;
+			});
 	}
 }
