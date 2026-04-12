@@ -59,6 +59,11 @@ const DEFAULT_SETTINGS: GitHubCodeViewerSettings = {
 	githubToken: ''
 }
 
+interface GitHubUserResponse {
+	avatar_url?: string;
+	html_url?: string;
+}
+
 interface ParsedGitHubUrl {
 	owner: string; repo: string; branch: string; path: string; startLine?: number; endLine?: number;
 }
@@ -139,7 +144,6 @@ export default class GitHubCodePlugin extends Plugin {
 			const parsed = parseGitHubUrl(url);
 
 			if (!parsed) {
-				// Usando a tradução
 				el.createEl("div", { text: `${t('invalidUrl')} "${url}"`, cls: "gcv-error" });
 				return;
 			}
@@ -179,7 +183,7 @@ export default class GitHubCodePlugin extends Plugin {
 						lang: languageInfo.ext,
 						theme: "github-dark",
 					});
-				} catch (e) {
+				} catch { // Removed unused 'e'
 					highlightedHtml = await codeToHtml(codeContent, {
 						lang: "text",
 						theme: "github-dark",
@@ -188,47 +192,50 @@ export default class GitHubCodePlugin extends Plugin {
 
 				let avatarUrl = "";
 				let profileUrl = "";
+				// Type cast userResponse to fix 'any' errors
 				if (userResponse.status === "fulfilled" && userResponse.value.json) {
-					avatarUrl = userResponse.value.json.avatar_url;
-					profileUrl = userResponse.value.json.html_url;
+					const userData = userResponse.value.json as GitHubUserResponse;
+					avatarUrl = userData.avatar_url || "";
+					profileUrl = userData.html_url || "";
 				}
 
 				container.empty();
 
-				container.innerHTML = `
-                    <div class="gcv-inner">
-                        <div class="gcv-header-flex">
-                            ${avatarUrl
-						? `<a href="${profileUrl}" target="_blank" class="gcv-avatar-link"><img src="${avatarUrl}" class="gcv-avatar"/></a>`
-						: `<div class="gcv-avatar-fallback"></div>`}
-                            
-                            <div class="gcv-content">
-                                <a href="${url}" target="_blank" class="gcv-title">
-                                    ${fileName} <span>${parsed.owner}/${parsed.repo}</span>
-                                </a>
-                                
-                                <div class="gcv-code-wrapper">
-                                    <div class="shiki-container">${highlightedHtml}</div>
-                                </div>
-                                
-                                <div class="gcv-footer">
-                                    <span>${parsed.branch}</span>
-                                    <span class="gcv-dot">·</span>
-                                    <span>${languageInfo.display}</span>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                `;
+				// --- REPLACED innerHTML WITH DOM MANIPULATION ---
+				const inner = container.createDiv({ cls: "gcv-inner" });
+				const headerFlex = inner.createDiv({ cls: "gcv-header-flex" });
+
+				if (avatarUrl) {
+					const avatarLink = headerFlex.createEl("a", { href: profileUrl, cls: "gcv-avatar-link" });
+					avatarLink.createEl("img", { attr: { src: avatarUrl }, cls: "gcv-avatar" });
+				} else {
+					headerFlex.createDiv({ cls: "gcv-avatar-fallback" });
+				}
+
+				const content = headerFlex.createDiv({ cls: "gcv-content" });
+				const titleLink = content.createEl("a", { href: url, cls: "gcv-title", text: fileName });
+				titleLink.createEl("span", { text: ` ${parsed.owner}/${parsed.repo}` });
+
+				const codeWrapper = content.createDiv({ cls: "gcv-code-wrapper" });
+				const shikiCont = codeWrapper.createDiv({ cls: "shiki-container" });
+				shikiCont.innerHTML = highlightedHtml; // Highlighting is pre-sanitized by shiki, but proceed with caution
+
+				const footer = content.createDiv({ cls: "gcv-footer" });
+				footer.createEl("span", { text: parsed.branch });
+				footer.createEl("span", { text: " · ", cls: "gcv-dot" });
+				footer.createEl("span", { text: languageInfo.display });
+
 			} catch (err) {
 				container.empty();
-				container.createEl("div", { text: `${t('error')} ${(err as Error).message}`, cls: "gcv-error" });
+				container.createDiv({ text: `${t('error')} ${(err as Error).message}`, cls: "gcv-error" });
 			}
 		});
 	}
 
 	async loadSettings() {
-		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+		// Fix 'any' assignment by ensuring the return type of loadData() is handled
+		const data = await this.loadData();
+		this.settings = Object.assign({}, DEFAULT_SETTINGS, data);
 	}
 
 	async saveSettings() {
@@ -247,13 +254,14 @@ class GitHubCodeViewerSettingTab extends PluginSettingTab {
 
 	display(): void {
 		const { containerEl } = this;
-
 		containerEl.empty();
-		// Título usando a tradução
-		containerEl.createEl('h2', { text: t('settingsTitle') });
+
+		// Use .setHeading() instead of manual h2
+		new Setting(containerEl)
+			.setName(t('settingsTitle'))
+			.setHeading();
 
 		new Setting(containerEl)
-			// Nome e descrição usando a tradução
 			.setName(t('tokenName'))
 			.setDesc(t('tokenDesc'))
 			.addText(text => {
