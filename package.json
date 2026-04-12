@@ -2,7 +2,7 @@
 	"name": "github-code-viewer",
 	"version": "1.0.1",
 	"author": "henzoparahua",
-	"description": "Minimalist code viewer linking github repos to ur notes :p",
+	"description": "Minimalist code viewer linking github repos to ur notes.",
 	"main": "main.js",
 	"type": "module",
 	"scripts": {
