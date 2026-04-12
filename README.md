@@ -11,6 +11,8 @@ To use the plugin, simply create a code block with the `github` language tag and
 * **Full File:** `https://github.com/owner/repo/blob/main/path/to/file.ts`
 * **Specific Lines:** `https://github.com/owner/repo/blob/main/path/to/file.ts#L10-L20`
 
+![Github Code Viewer Demo](github-code-viewer.gif)
+
 ## Settings
 
 If you want to display code from **private repositories**, you need to provide a GitHub Personal Access Token:
