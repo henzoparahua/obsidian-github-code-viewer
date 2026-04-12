@@ -3,9 +3,9 @@
 	"name": "Github Code Viewer",
 	"version": "1.0.1",
 	"minAppVersion": "0.15.0",
-	"description": "Minimalist code viewer linking github repos to your notes.",
+	"description": "minimalist code viewer linking github repos to your notes.",
 	"author": "henzoparahua",
 	"authorUrl": "https://github.com/henzoparahua",
 	"fundingUrl": "https://github.com/sponsors/henzoparahua",
-	"isDesktopOnly": false
+	"isDesktopOnly": true
 }

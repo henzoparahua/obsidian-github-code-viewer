@@ -128,7 +128,7 @@ function getLanguageInfo(filename: string): { display: string; ext: string } {
 }
 
 export default class GitHubCodePlugin extends Plugin {
-	settings: GitHubCodeViewerSettings;
+	settings!: GitHubCodeViewerSettings;
 
 	async onload() {
 		await this.loadSettings();

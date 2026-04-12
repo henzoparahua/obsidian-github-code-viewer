@@ -2,6 +2,6 @@
 	"id": "github-code-viewer",
 	"name": "Github Code Viewer",
 	"author": "henzoparahua",
-	"description": "Minimalist code viewer linking github repos to ur notes :p",
+	"description": "Minimalist code viewer linking github repos to your notes.",
 	"repo": "henzoparahua/obsidian-github-code-viewer"
 }
