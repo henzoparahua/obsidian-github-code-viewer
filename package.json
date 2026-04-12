@@ -1,6 +1,6 @@
 {
 	"name": "github-code-viewer",
-	"version": "1.0.0",
+	"version": "1.0.1",
 	"author": "henzoparahua",
 	"description": "Minimalist code viewer linking github repos to ur notes :p",
 	"main": "main.js",
