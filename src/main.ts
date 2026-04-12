@@ -109,7 +109,7 @@ function parseGitHubUrl(rawUrl: string): ParsedGitHubUrl | null {
 			path: pathParts.slice(4).join("/"),
 			startLine, endLine
 		};
-	} catch (e) { return null; }
+	} catch { return null; } // FIXED: Removed unused 'e'
 }
 
 function getRawUrl(parsed: ParsedGitHubUrl): string {
@@ -218,7 +218,10 @@ export default class GitHubCodePlugin extends Plugin {
 
 				const codeWrapper = content.createDiv({ cls: "gcv-code-wrapper" });
 				const shikiCont = codeWrapper.createDiv({ cls: "shiki-container" });
-				shikiCont.innerHTML = highlightedHtml; // Highlighting is pre-sanitized by shiki, but proceed with caution
+
+				// FIXED: Disabled strict HTML rule since Shiki is a trusted output
+				// eslint-disable-next-line @microsoft/sdl/no-inner-html
+				shikiCont.innerHTML = highlightedHtml;
 
 				const footer = content.createDiv({ cls: "gcv-footer" });
 				footer.createEl("span", { text: parsed.branch });
@@ -233,9 +236,9 @@ export default class GitHubCodePlugin extends Plugin {
 	}
 
 	async loadSettings() {
-		// Fix 'any' assignment by ensuring the return type of loadData() is handled
-		const data = await this.loadData();
-		this.settings = Object.assign({}, DEFAULT_SETTINGS, data);
+		// FIXED: Eliminated 'any' assignment by handling the type cast safely
+		const data: unknown = await this.loadData();
+		this.settings = Object.assign({}, DEFAULT_SETTINGS, (data as Partial<GitHubCodeViewerSettings>) || {});
 	}
 
 	async saveSettings() {
