@@ -34,7 +34,6 @@ const es = {
 	error: 'Error:'
 };
 
-// Mapeamento dos idiomas
 const locales: Record<string, typeof en> = {
 	'en': en,
 	'pt': pt,
@@ -44,13 +43,11 @@ const locales: Record<string, typeof en> = {
 };
 
 function t(key: keyof typeof en): string {
-	// Pega o idioma atual do Obsidian. Se não achar, usa 'pt-br' como padrão.
 	const lang = window.localStorage.getItem('language') || 'pt-BR';
 	const locale = locales[lang] || pt;
 	return locale[key] || pt[key];
 }
 
-// --- CONFIGURAÇÕES DO PLUGIN ---
 interface GitHubCodeViewerSettings {
 	githubToken: string;
 }
@@ -84,11 +81,11 @@ function parseGitHubUrl(rawUrl: string): ParsedGitHubUrl | null {
 
 		if (hash) {
 			const lineMatch = hash.match(/#L(\d+)(?:-L(\d+))?/);
-			// Corrigido para acessar os índices corretamente
-			if (lineMatch && lineMatch) {
-				startLine = parseInt(lineMatch[1] || "", 10);
+
+			if (lineMatch) {
+				startLine = parseInt(lineMatch[1] as string, 10);
 				if (lineMatch) {
-					endLine = parseInt(lineMatch[2] || "", 10);
+					endLine = parseInt(lineMatch[2] as string, 10);
 				} else {
 					endLine = startLine;
 				}
@@ -98,9 +95,9 @@ function parseGitHubUrl(rawUrl: string): ParsedGitHubUrl | null {
 		const pathParts = urlObj.pathname.split("/").filter(Boolean);
 		if (pathParts.length < 5 || pathParts[2] !== "blob") return null;
 
-		const owner = pathParts[0] || "";
-		const repo = pathParts[1] || "";
-		const branch = pathParts[3] || "";
+		const owner = pathParts[0] as string;
+		const repo = pathParts[1] as string;
+		const branch = pathParts[3] as string;
 
 		if (!owner || !repo || !branch) return null;
 
@@ -109,7 +106,7 @@ function parseGitHubUrl(rawUrl: string): ParsedGitHubUrl | null {
 			path: pathParts.slice(4).join("/"),
 			startLine, endLine
 		};
-	} catch { return null; } // FIXED: Removed unused 'e'
+	} catch { return null; }
 }
 
 function getRawUrl(parsed: ParsedGitHubUrl): string {
@@ -119,16 +116,22 @@ function getRawUrl(parsed: ParsedGitHubUrl): string {
 function getLanguageInfo(filename: string): { display: string; ext: string } {
 	const ext = filename.split(".").pop()?.toLowerCase() ?? "text";
 
+	const shikiLangMap: Record<string, string> = {
+		"h": "cpp",
+		"hpp": "cpp"
+	};
+
 	const displayNames: Record<string, string> = {
 		js: "JavaScript", ts: "TypeScript", cpp: "C++", c: "C", cs: "C#",
 		py: "Python", rb: "Ruby", md: "Markdown", html: "HTML", css: "CSS",
 		json: "JSON", yml: "YAML", yaml: "YAML", sh: "Shell", rs: "Rust",
-		go: "Go", java: "Java", php: "PHP", kt: "Kotlin", swift: "Swift"
+		go: "Go", java: "Java", php: "PHP", kt: "Kotlin", swift: "Swift",
+		h: "C/C++ Header"
 	};
 
 	return {
 		display: displayNames[ext] || ext.toUpperCase(),
-		ext: ext
+		ext: shikiLangMap[ext] || ext
 	};
 }
 
@@ -170,29 +173,32 @@ export default class GitHubCodePlugin extends Plugin {
 				const text = codeResponse.value.text;
 				let codeContent = text;
 
-				if (parsed.startLine !== undefined) {
+				if (parsed.startLine !== undefined && !isNaN(parsed.startLine)) {
 					const lines = text.split("\n");
+					// Se o endLine por algum motivo vier inválido, forçamos ele a ser igual ao startLin
+					const safeEndLine = (parsed.endLine && !isNaN(parsed.endLine)) ? parsed.endLine : parsed.startLine;
+
 					const start = parsed.startLine - 1;
-					const end = parsed.endLine ?? parsed.startLine;
+					const end = safeEndLine;
+
 					codeContent = lines.slice(start, end).join("\n");
 				}
 
 				let highlightedHtml = "";
 				try {
 					highlightedHtml = await codeToHtml(codeContent, {
-						lang: languageInfo.ext,
-						theme: "github-dark",
+						lang: languageInfo.ext as any,
+						theme: "github-dark" as any,
 					});
-				} catch { // Removed unused 'e'
+				} catch {
 					highlightedHtml = await codeToHtml(codeContent, {
-						lang: "text",
-						theme: "github-dark",
+						lang: "text" as any,
+						theme: "github-dark" as any,
 					});
 				}
 
 				let avatarUrl = "";
 				let profileUrl = "";
-				// Type cast userResponse to fix 'any' errors
 				if (userResponse.status === "fulfilled" && userResponse.value.json) {
 					const userData = userResponse.value.json as GitHubUserResponse;
 					avatarUrl = userData.avatar_url || "";
@@ -201,7 +207,6 @@ export default class GitHubCodePlugin extends Plugin {
 
 				container.empty();
 
-				// --- REPLACED innerHTML WITH DOM MANIPULATION ---
 				const inner = container.createDiv({ cls: "gcv-inner" });
 				const headerFlex = inner.createDiv({ cls: "gcv-header-flex" });
 
@@ -219,7 +224,6 @@ export default class GitHubCodePlugin extends Plugin {
 				const codeWrapper = content.createDiv({ cls: "gcv-code-wrapper" });
 				const shikiCont = codeWrapper.createDiv({ cls: "shiki-container" });
 
-				// FIXED: Disabled strict HTML rule since Shiki is a trusted output
 				// eslint-disable-next-line @microsoft/sdl/no-inner-html
 				shikiCont.innerHTML = highlightedHtml;
 
@@ -236,7 +240,6 @@ export default class GitHubCodePlugin extends Plugin {
 	}
 
 	async loadSettings() {
-		// FIXED: Eliminated 'any' assignment by handling the type cast safely
 		const data: unknown = await this.loadData();
 		this.settings = Object.assign({}, DEFAULT_SETTINGS, (data as Partial<GitHubCodeViewerSettings>) || {});
 	}
@@ -246,7 +249,6 @@ export default class GitHubCodePlugin extends Plugin {
 	}
 }
 
-// --- TELA DE CONFIGURAÇÕES (UI) ---
 class GitHubCodeViewerSettingTab extends PluginSettingTab {
 	plugin: GitHubCodePlugin;
 
@@ -259,7 +261,6 @@ class GitHubCodeViewerSettingTab extends PluginSettingTab {
 		const { containerEl } = this;
 		containerEl.empty();
 
-		// Use .setHeading() instead of manual h2
 		new Setting(containerEl)
 			.setName(t('settingsTitle'))
 			.setHeading();
